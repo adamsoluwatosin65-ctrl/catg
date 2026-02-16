@@ -4,7 +4,7 @@ import json, time, os, random, base64
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="CATG Quiz Pro", layout="centered")
 
-# --- STYLE ---
+# --- CSS STYLES ---
 st.markdown("""
     <style>
     .stApp {
@@ -33,6 +33,9 @@ st.markdown("""
         background: white; color: #1e5631; border: 2px solid #1e5631; 
     }
     .stButton>button:hover { background-color: #1e5631 !important; color: white !important; }
+    
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -44,46 +47,16 @@ if 'volume' not in st.session_state: st.session_state.volume = 50
 if 'audio_initialized' not in st.session_state: st.session_state.audio_initialized = False
 if 'currently_playing' not in st.session_state: st.session_state.currently_playing = None
 
-# --- AUDIO LOGIC ---
-def get_audio_player(file_path, loop=True):
-    """Generates the hidden audio tag"""
+# --- OPTIMIZED AUDIO LOGIC ---
+@st.cache_data(show_spinner=False)
+def get_base64_audio(file_path):
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
-            data = f.read()
-            b64 = base64.b64encode(data).decode()
-            loop_attr = "loop" if loop else ""
-            # We set an initial volume here based on the slider state
-            init_vol = 0 if st.session_state.mute else st.session_state.volume / 100
-            return f"""
-                <audio autoplay="true" {loop_attr} id="quiz-audio-player" style="display:none;">
-                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-                </audio>
-                <script>
-                    document.getElementById('quiz-audio-player').volume = {init_vol};
-                </script>
-                """
-    return ""
+            return base64.b64encode(f.read()).decode()
+    return None
 
-def update_volume_js():
-    """JavaScript bridge to update volume without re-rendering the audio tag"""
-    vol = 0 if st.session_state.mute else st.session_state.volume / 100
-    return f"""
-        <script>
-            // Target the audio element in the parent or current document
-            var aud = window.parent.document.getElementById('quiz-audio-player') || document.getElementById('quiz-audio-player');
-            if(aud) {{
-                aud.volume = {vol};
-            }}
-        </script>
-        """
-
-# --- SIDEBAR & VOLUME CONTROL ---
-with st.sidebar:
-    st.header("⚙️ Controls")
-    st.session_state.mute = st.checkbox("Mute All Sounds", value=st.session_state.mute)
-    st.session_state.volume = st.slider("Volume", 0, 100, st.session_state.volume)
-    
-    # DETERMINE WHAT SHOULD PLAY
+def update_audio_and_volume():
+    """Handles both song switching and smooth real-time volume"""
     target_audio = None
     if st.session_state.audio_initialized and not st.session_state.mute:
         if st.session_state.page in ['quiz', 'next_turn', 'settings', 'mode_selection']:
@@ -91,22 +64,50 @@ with st.sidebar:
         elif st.session_state.page == 'summary':
             target_audio = "winner_sound.mp3.mp3"
 
-    # 1. ONLY INJECT AUDIO TAG IF THE SONG ACTUALLY CHANGES
+    # 1. ONLY update the audio player tag if the file name changed
     if target_audio != st.session_state.currently_playing:
         if target_audio:
-            st.components.v1.html(get_audio_player(target_audio, loop=(target_audio=="background_music.mp3")), height=0)
+            b64 = get_base64_audio(target_audio)
+            if b64:
+                loop = "loop" if target_audio == "background_music.mp3" else ""
+                st.components.v1.html(f"""
+                    <audio autoplay="true" {loop} id="quiz-audio-player" style="display:none;">
+                        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+                    </audio>
+                """, height=0)
         st.session_state.currently_playing = target_audio
+
+    # 2. SEPARATE VOLUME LOGIC: This runs every time the slider moves.
+    # We use a try/catch in JS to prevent errors if the player isn't loaded yet.
+    vol = 0 if st.session_state.mute else st.session_state.volume / 100
+    vol_js = f"""
+        <script>
+            (function() {{
+                var aud = window.parent.document.getElementById('quiz-audio-player');
+                if(!aud) aud = document.getElementById('quiz-audio-player');
+                if(aud) {{
+                    aud.volume = {vol};
+                }}
+            }})();
+        </script>
+    """
+    st.components.v1.html(vol_js, height=0)
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ Controls")
+    # Using 'on_change' can help sometimes, but keeping it simple for now
+    st.session_state.mute = st.checkbox("Mute All Sounds", value=st.session_state.mute)
+    st.session_state.volume = st.slider("Volume", 0, 100, st.session_state.volume)
     
-    # 2. ALWAYS INJECT THE VOLUME UPDATE SCRIPT
-    # This script runs on every slider movement but doesn't contain the audio file, so it doesn't reset the music.
-    st.components.v1.html(update_volume_js(), height=0)
+    update_audio_and_volume()
 
     st.markdown("---")
     if st.button("🚪 QUIT GAME"):
         st.session_state.clear()
         st.rerun()
 
-# --- THE REST OF YOUR GAME LOGIC (Unchanged) ---
+# --- GAME LOGIC (Rest of code remains the same) ---
 def finish_round():
     if 'current_player_name' in st.session_state:
         st.session_state.leaderboard.append({"name": st.session_state.current_player_name, "score": st.session_state.score})
