@@ -36,12 +36,6 @@ st.markdown("""
         background: white; color: #1e5631; border: 2px solid #1e5631; 
     }
     .stButton>button:hover { background-color: #1e5631 !important; color: white !important; }
-    
-    .quit-btn button {
-        background-color: #ff4b4b !important;
-        color: white !important;
-        border: none !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,28 +44,23 @@ if 'mute' not in st.session_state: st.session_state.mute = False
 if 'volume' not in st.session_state: st.session_state.volume = 50
 if 'audio_initialized' not in st.session_state: st.session_state.audio_initialized = False
 
-def get_base64_audio(file_path):
-    if os.path.exists(file_path):
+def play_sound(file_path, loop=False):
+    """Refined audio trigger using components for better browser compatibility"""
+    if not st.session_state.mute and st.session_state.audio_initialized and os.path.exists(file_path):
         with open(file_path, "rb") as f:
             data = f.read()
-            return base64.b64encode(data).decode()
-    return None
-
-def play_sound(file_path, loop=False):
-    if not st.session_state.mute and st.session_state.audio_initialized:
-        b64 = get_base64_audio(file_path)
-        if b64:
+            b64 = base64.b64encode(data).decode()
             vol = st.session_state.volume / 100
             loop_attr = "loop" if loop else ""
-            unique_id = str(time.time()).replace(".", "")
+            # A unique key ensures the HTML component refreshes and plays every time
+            unique_key = f"audio_{file_path}_{time.time()}"
             md = f"""
-                <audio autoplay="true" {loop_attr} class="hidden-audio" id="aud_{unique_id}">
+                <audio autoplay="true" {loop_attr} id="player">
                 <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
                 </audio>
                 <script>
-                    var audio = document.getElementById("aud_{unique_id}");
+                    var audio = document.getElementById("player");
                     audio.volume = {vol};
-                    audio.play();
                 </script>
                 """
             st.components.v1.html(md, height=0)
@@ -81,9 +70,8 @@ with st.sidebar:
     st.header("⚙️ Controls")
     st.session_state.mute = st.checkbox("Mute All Sounds", value=st.session_state.mute)
     st.session_state.volume = st.slider("Volume", 0, 100, st.session_state.volume)
-    
     st.markdown("---")
-    if st.button("🚪 QUIT GAME", key="sidebar_quit"):
+    if st.button("🚪 QUIT GAME"):
         st.session_state.clear()
         st.rerun()
 
@@ -113,10 +101,24 @@ def timer_display():
 # --- APP PAGES ---
 
 if st.session_state.page == 'welcome':
+    # --- LOGO SECTION ---
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if os.path.exists('logo.png'):
+            st.image('logo.png', use_container_width=True)
+        else:
+            # Fallback if logo.png is missing or named differently
+            st.markdown("<h1 style='text-align:center; font-size: 80px;'>🏆</h1>", unsafe_allow_html=True)
+            
     st.markdown("<h1 style='text-align: center; color: white;'>WELCOME TO CATG QUIZ</h1>", unsafe_allow_html=True)
+    # --- SUBTITLE RESTORED ---
+    st.markdown("<p style='text-align: center; color: #f0f0f0; font-size: 18px; font-weight: 600; font-style: italic;'>Win to get to leadership board</p>", unsafe_allow_html=True)
+    
     if not st.session_state.audio_initialized:
-        if st.button("🔊 CLICK TO ENABLE SOUND"):
+        st.info("Please enable sound to play with audio experience.")
+        if st.button("🔊 CLICK TO ENABLE SOUND & START"):
             st.session_state.audio_initialized = True
+            st.session_state.page = 'mode_selection'
             st.rerun()
     else:
         if st.button("GET STARTED"):
@@ -169,7 +171,7 @@ elif st.session_state.page == 'next_turn':
             st.rerun()
 
 elif st.session_state.page == 'quiz':
-    play_sound("background_music.mp3", loop=True) # Play background music
+    play_sound("background_music.mp3", loop=True)
     timer_display()
     q = st.session_state.questions_data[st.session_state.shuffled_indices[st.session_state.current_step]]
     st.markdown(f"<div class='question-box'><h2>{q['question']}</h2></div>", unsafe_allow_html=True)
@@ -181,7 +183,7 @@ elif st.session_state.page == 'quiz':
             st.rerun()
 
 elif st.session_state.page == 'summary':
-    play_sound("winnner_sound,mp3.mp3") # Play winner sound
+    play_sound("winnner_sound.mp3.mp3")
     st.markdown("<h1 style='text-align:center; color:white;'>🏆 LEADERS 🏆</h1>", unsafe_allow_html=True)
     sorted_scores = sorted(st.session_state.leaderboard, key=lambda x: x['score'], reverse=True)
     for entry in sorted_scores:
