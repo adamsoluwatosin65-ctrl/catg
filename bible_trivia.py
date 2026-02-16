@@ -4,7 +4,7 @@ import json, time, os, random, base64
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="CATG Quiz Pro", layout="centered")
 
-# --- PERFORMANCE OPTIMIZED DESIGN ---
+# --- STYLE ---
 st.markdown("""
     <style>
     .stApp {
@@ -42,46 +42,63 @@ if 'leaderboard' not in st.session_state: st.session_state.leaderboard = []
 if 'mute' not in st.session_state: st.session_state.mute = False
 if 'volume' not in st.session_state: st.session_state.volume = 50
 if 'audio_initialized' not in st.session_state: st.session_state.audio_initialized = False
+if 'currently_playing' not in st.session_state: st.session_state.currently_playing = None
 
-# --- AUDIO PERSISTENCE FUNCTION ---
-def get_audio_html(file_path, loop=True):
+# --- AUDIO LOGIC ---
+def get_audio_player(file_path, loop=True):
+    """Only returns the player if the song has actually changed"""
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             data = f.read()
             b64 = base64.b64encode(data).decode()
-            vol = st.session_state.volume / 100
             loop_attr = "loop" if loop else ""
             return f"""
-                <audio autoplay="true" {loop_attr} style="display:none;">
+                <audio autoplay="true" {loop_attr} id="quiz-audio-player" style="display:none;">
                 <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
                 </audio>
-                <script>
-                    var aud = document.querySelector('audio');
-                    if(aud) aud.volume = {vol};
-                </script>
                 """
     return ""
 
-# --- SIDEBAR & CONTINUOUS AUDIO ---
+def update_volume_js():
+    """Updates volume via JS without restarting the audio file"""
+    vol = 0 if st.session_state.mute else st.session_state.volume / 100
+    return f"""
+        <script>
+            var aud = window.parent.document.getElementById('quiz-audio-player');
+            if(!aud) aud = document.getElementById('quiz-audio-player');
+            if(aud) aud.volume = {vol};
+        </script>
+        """
+
+# --- SIDEBAR & VOLUME CONTROL ---
 with st.sidebar:
     st.header("⚙️ Controls")
     st.session_state.mute = st.checkbox("Mute All Sounds", value=st.session_state.mute)
     st.session_state.volume = st.slider("Volume", 0, 100, st.session_state.volume)
     
-    # This is the "Engine Room" for audio. 
-    # Because the sidebar stays consistent, we play the music here.
+    # DETERMINE WHAT SHOULD PLAY
+    target_audio = None
     if st.session_state.audio_initialized and not st.session_state.mute:
         if st.session_state.page in ['quiz', 'next_turn', 'settings', 'mode_selection']:
-            st.components.v1.html(get_audio_html("background_music.mp3", loop=True), height=0)
+            target_audio = "background_music.mp3"
         elif st.session_state.page == 'summary':
-            st.components.v1.html(get_audio_html("winner_sound.mp3.mp3", loop=False), height=0)
+            target_audio = "winner_sound.mp3.mp3"
+
+    # ONLY INJECT AUDIO TAG IF SONG CHANGES
+    if target_audio != st.session_state.currently_playing:
+        if target_audio:
+            st.components.v1.html(get_audio_player(target_audio, loop=(target_audio=="background_music.mp3")), height=0)
+        st.session_state.currently_playing = target_audio
+    
+    # ALWAYS UPDATE VOLUME (This part doesn't restart the song)
+    st.components.v1.html(update_volume_js(), height=0)
 
     st.markdown("---")
     if st.button("🚪 QUIT GAME"):
         st.session_state.clear()
         st.rerun()
 
-# --- HELPER FUNCTIONS ---
+# --- THE REST OF YOUR GAME LOGIC (Unchanged) ---
 def finish_round():
     if 'current_player_name' in st.session_state:
         st.session_state.leaderboard.append({"name": st.session_state.current_player_name, "score": st.session_state.score})
@@ -101,16 +118,13 @@ def timer_display():
             st.rerun()
         st.markdown(f"<div style='text-align:right; font-weight:900; color:white; font-size:24px;'>⏱️ {remaining}s</div>", unsafe_allow_html=True)
 
-# --- PAGES ---
 if st.session_state.page == 'welcome':
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if os.path.exists('logo.png'): st.image('logo.png', use_container_width=True)
         else: st.markdown("<h1 style='text-align:center; font-size: 80px;'>🏆</h1>", unsafe_allow_html=True)
-            
     st.markdown("<h1 style='text-align: center; color: white;'>WELCOME TO CATG QUIZ</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #f0f0f0; font-size: 18px; font-weight: 600; font-style: italic;'>Win to get to leadership board</p>", unsafe_allow_html=True)
-    
     if st.button("🔊 CLICK TO ENABLE SOUND & START"):
         st.session_state.audio_initialized = True
         st.session_state.page = 'mode_selection'
@@ -138,7 +152,6 @@ elif st.session_state.page == 'settings':
         p_name = st.text_input("Name", value="Player 1")
         st.session_state.player_names = [p_name]
         st.session_state.total_players = 1
-
     limit = st.selectbox("Time (Seconds)", [30, 60, 120])
     if st.button("START"):
         st.session_state.update({'page': 'quiz' if st.session_state.game_mode == 'single' else 'next_turn', 'player_index': 0, 'time_limit': limit, 'leaderboard': [], 'current_player_name': st.session_state.player_names[0]})
@@ -177,5 +190,5 @@ elif st.session_state.page == 'summary':
         st.markdown(f"<div class='question-box'><h3>{entry['name']}: {entry['score']} pts</h3></div>", unsafe_allow_html=True)
     if st.button("Restart"):
         st.session_state.page = 'welcome'
+        st.session_state.currently_playing = None # Reset so music can start again
         st.rerun()
-
