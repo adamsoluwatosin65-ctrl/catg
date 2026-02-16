@@ -62,7 +62,7 @@ st.markdown("""
 
 # --- SESSION STATE ---
 if 'page' not in st.session_state: st.session_state.page = 'welcome'
-if 'user' not in st.session_state: st.session_state.user = "Guest"
+if 'leaderboard' not in st.session_state: st.session_state.leaderboard = []
 
 # --- TIMER FRAGMENT ---
 @st.fragment(run_every=1)
@@ -71,9 +71,20 @@ def timer_display():
         elapsed = time.time() - st.session_state.start_time
         remaining = int(st.session_state.time_limit - elapsed)
         if remaining <= 0:
-            st.session_state.page = 'summary'
+            finish_round()
             st.rerun()
         st.markdown(f"<div style='text-align:right; font-weight:900; color:white; font-size:24px;'>⏱️ {remaining}s</div>", unsafe_allow_html=True)
+
+def finish_round():
+    # Save the current player's score to the round leaderboard
+    st.session_state.leaderboard.append({"name": st.session_state.current_player_name, "score": st.session_state.score})
+    
+    # Check if there are more players left
+    if st.session_state.game_mode == 'multi' and st.session_state.player_index < st.session_state.total_players - 1:
+        st.session_state.player_index += 1
+        st.session_state.page = 'next_turn'
+    else:
+        st.session_state.page = 'summary'
 
 # --- FLOATING EFFECT ---
 def show_balloons():
@@ -90,74 +101,101 @@ def show_balloons():
 # --- APP PAGES ---
 
 if st.session_state.page == 'welcome':
-    # Logo Section
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if os.path.exists('logo.png'):
-            st.image('logo.png', use_container_width=True)
-        else:
-            # Fallback icon if logo file isn't found
-            st.markdown("<h1 style='text-align:center; font-size: 80px;'>🏆</h1>", unsafe_allow_html=True)
+        if os.path.exists('logo.png'): st.image('logo.png', use_container_width=True)
+        else: st.markdown("<h1 style='text-align:center; font-size: 80px;'>🏆</h1>", unsafe_allow_html=True)
     
     st.markdown("<h1 style='text-align: center; color: white;'>WELCOME TO CATG QUIZ</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #f0f0f0; font-size: 18px; font-weight: 600; font-style: italic;'>Win to get to leadership board</p>", unsafe_allow_html=True)
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    player_name = st.text_input("Enter Player Name", placeholder="Your name here...")
-    
     if st.button("GET STARTED"):
-        if player_name:
-            st.session_state.user = player_name
-            st.session_state.page = 'mode_selection'
-            st.rerun()
-        else:
-            st.warning("Please enter your name to continue!")
+        st.session_state.page = 'mode_selection'
+        st.rerun()
 
 elif st.session_state.page == 'mode_selection':
-    st.markdown(f"<h1 style='text-align:center; color:white;'>Welcome, {st.session_state.user}!</h1>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    if c1.button("👤 Single Player"): st.session_state.page = 'settings'; st.rerun()
-    if c2.button("🌐 Play Online"): st.info("Searching for global match...")
-    if c3.button("👥 Play with Friends"): 
-        room_id = random.randint(1000, 9999)
-        st.success(f"Room Created! ID: {room_id}")
-        st.info("Share this ID with a friend to compete!")
+    st.markdown("<h1 style='text-align:center; color:white;'>Choose Game Mode</h1>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    if c1.button("👤 Single Player"):
+        st.session_state.game_mode = 'single'
+        st.session_state.page = 'settings'
+        st.rerun()
+    if c2.button("👥 Multiple Players"):
+        st.session_state.game_mode = 'multi'
+        st.session_state.page = 'settings'
+        st.rerun()
 
 elif st.session_state.page == 'settings':
-    st.markdown("<h2 style='text-align:center; color:white;'>Quiz Settings</h2>", unsafe_allow_html=True)
-    limit = st.selectbox("Time Limit (Seconds)", [30, 60, 120, 300])
-    if st.button("START QUIZ"):
+    st.markdown("<h2 style='text-align:center; color:white;'>Game Settings</h2>", unsafe_allow_html=True)
+    
+    if st.session_state.game_mode == 'multi':
+        total_p = st.number_input("How many players?", min_value=2, max_value=10, value=2)
+        st.session_state.total_players = total_p
+        st.session_state.player_names = []
+        for i in range(total_p):
+            name = st.text_input(f"Player {i+1} Name", key=f"pname_{i}")
+            st.session_state.player_names.append(name if name else f"Player {i+1}")
+    else:
+        pname = st.text_input("Player Name", value="Guest")
+        st.session_state.player_names = [pname]
+        st.session_state.total_players = 1
+
+    limit = st.selectbox("Time Limit per Player (Seconds)", [30, 60, 120, 300])
+    
+    if st.button("START GAME"):
+        st.session_state.update({
+            'page': 'quiz' if st.session_state.game_mode == 'single' else 'next_turn',
+            'player_index': 0,
+            'time_limit': limit,
+            'leaderboard': []
+        })
+        st.rerun()
+
+elif st.session_state.page == 'next_turn':
+    name = st.session_state.player_names[st.session_state.player_index]
+    st.markdown(f"<h1 style='text-align:center; color:white;'>Ready, {name}?</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:white;'>Pass the device to the player above.</p>", unsafe_allow_html=True)
+    if st.button("START MY TURN"):
         if os.path.exists('questions.json'):
             qs = json.load(open('questions.json'))
             idx = list(range(len(qs)))
             random.shuffle(idx)
             st.session_state.update({
                 'page': 'quiz', 'score': 0, 'current_step': 0, 
-                'start_time': time.time(), 'time_limit': limit, 
-                'questions_data': qs, 'shuffled_indices': idx
+                'start_time': time.time(), 'questions_data': qs, 
+                'shuffled_indices': idx, 'current_player_name': name
             })
             st.rerun()
-        else:
-            st.error("questions.json file not found!")
 
 elif st.session_state.page == 'quiz':
     timer_display()
+    st.markdown(f"<p style='color:white; font-weight:bold;'>Player: {st.session_state.current_player_name}</p>", unsafe_allow_html=True)
     q = st.session_state.questions_data[st.session_state.shuffled_indices[st.session_state.current_step]]
     st.markdown(f"<div class='question-box'><p>Question {st.session_state.current_step + 1}</p><h2>{q['question']}</h2></div>", unsafe_allow_html=True)
     
     for opt in q['options']:
         if st.button(opt, key=f"btn_{st.session_state.current_step}_{opt}"):
-            if opt == q['answer']:
-                st.session_state.score += 1
+            if opt == q['answer']: st.session_state.score += 1
             st.session_state.current_step += 1
             if st.session_state.current_step >= len(st.session_state.shuffled_indices):
-                st.session_state.page = 'summary'
+                finish_round()
             st.rerun()
 
 elif st.session_state.page == 'summary':
     show_balloons()
-    st.markdown(f"<h1 style='text-align:center; color:white; position:relative; z-index:1;'>Great Job, {st.session_state.user}!</h1>", unsafe_allow_html=True)
-    st.markdown(f"<div class='question-box' style='text-align:center;'><h2>Your Final Score: {st.session_state.score}</h2></div>", unsafe_allow_html=True)
-    if st.button("Play Again"): 
-        st.session_state.page = 'mode_selection'
+    st.markdown("<h1 style='text-align:center; color:white;'>🏆 LEADERSHIP BOARD 🏆</h1>", unsafe_allow_html=True)
+    
+    # Sort scores: Highest first
+    sorted_scores = sorted(st.session_state.leaderboard, key=lambda x: x['score'], reverse=True)
+    
+    for i, entry in enumerate(sorted_scores):
+        rank_icon = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "👤"
+        st.markdown(f"""
+            <div class='question-box' style='padding: 20px; margin-bottom: 10px;'>
+                <h3 style='margin:0;'>{rank_icon} {entry['name']}: {entry['score']} Points</h3>
+            </div>
+        """, unsafe_allow_html=True)
+
+    if st.button("Back to Main Menu"):
+        st.session_state.page = 'welcome'
         st.rerun()
