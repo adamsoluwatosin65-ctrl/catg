@@ -46,27 +46,34 @@ if 'currently_playing' not in st.session_state: st.session_state.currently_playi
 
 # --- AUDIO LOGIC ---
 def get_audio_player(file_path, loop=True):
-    """Only returns the player if the song has actually changed"""
+    """Generates the hidden audio tag"""
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             data = f.read()
             b64 = base64.b64encode(data).decode()
             loop_attr = "loop" if loop else ""
+            # We set an initial volume here based on the slider state
+            init_vol = 0 if st.session_state.mute else st.session_state.volume / 100
             return f"""
                 <audio autoplay="true" {loop_attr} id="quiz-audio-player" style="display:none;">
                 <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
                 </audio>
+                <script>
+                    document.getElementById('quiz-audio-player').volume = {init_vol};
+                </script>
                 """
     return ""
 
 def update_volume_js():
-    """Updates volume via JS without restarting the audio file"""
+    """JavaScript bridge to update volume without re-rendering the audio tag"""
     vol = 0 if st.session_state.mute else st.session_state.volume / 100
     return f"""
         <script>
-            var aud = window.parent.document.getElementById('quiz-audio-player');
-            if(!aud) aud = document.getElementById('quiz-audio-player');
-            if(aud) aud.volume = {vol};
+            // Target the audio element in the parent or current document
+            var aud = window.parent.document.getElementById('quiz-audio-player') || document.getElementById('quiz-audio-player');
+            if(aud) {{
+                aud.volume = {vol};
+            }}
         </script>
         """
 
@@ -84,13 +91,14 @@ with st.sidebar:
         elif st.session_state.page == 'summary':
             target_audio = "winner_sound.mp3.mp3"
 
-    # ONLY INJECT AUDIO TAG IF SONG CHANGES
+    # 1. ONLY INJECT AUDIO TAG IF THE SONG ACTUALLY CHANGES
     if target_audio != st.session_state.currently_playing:
         if target_audio:
             st.components.v1.html(get_audio_player(target_audio, loop=(target_audio=="background_music.mp3")), height=0)
         st.session_state.currently_playing = target_audio
     
-    # ALWAYS UPDATE VOLUME (This part doesn't restart the song)
+    # 2. ALWAYS INJECT THE VOLUME UPDATE SCRIPT
+    # This script runs on every slider movement but doesn't contain the audio file, so it doesn't reset the music.
     st.components.v1.html(update_volume_js(), height=0)
 
     st.markdown("---")
@@ -190,5 +198,5 @@ elif st.session_state.page == 'summary':
         st.markdown(f"<div class='question-box'><h3>{entry['name']}: {entry['score']} pts</h3></div>", unsafe_allow_html=True)
     if st.button("Restart"):
         st.session_state.page = 'welcome'
-        st.session_state.currently_playing = None # Reset so music can start again
+        st.session_state.currently_playing = None 
         st.rerun()
