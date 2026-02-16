@@ -90,17 +90,28 @@ def show_balloons():
 # --- APP PAGES ---
 
 if st.session_state.page == 'welcome':
-    st.markdown("<h1 style='text-align: center; color: white; margin-top: 50px;'>CATG QUIZ PRO</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: white; font-size: 20px;'>Enter your name to start the challenge!</p>", unsafe_allow_html=True)
+    # Logo Section
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if os.path.exists('logo.png'):
+            st.image('logo.png', use_container_width=True)
+        else:
+            # Fallback icon if logo file isn't found
+            st.markdown("<h1 style='text-align:center; font-size: 80px;'>🏆</h1>", unsafe_allow_html=True)
     
-    player_name = st.text_input("Player Name", placeholder="Type your name here...")
+    st.markdown("<h1 style='text-align: center; color: white;'>WELCOME TO CATG QUIZ</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #f0f0f0; font-size: 18px; font-weight: 600; font-style: italic;'>Win to get to leadership board</p>", unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    player_name = st.text_input("Enter Player Name", placeholder="Your name here...")
+    
     if st.button("GET STARTED"):
         if player_name:
             st.session_state.user = player_name
             st.session_state.page = 'mode_selection'
             st.rerun()
         else:
-            st.warning("Please enter a name first!")
+            st.warning("Please enter your name to continue!")
 
 elif st.session_state.page == 'mode_selection':
     st.markdown(f"<h1 style='text-align:center; color:white;'>Welcome, {st.session_state.user}!</h1>", unsafe_allow_html=True)
