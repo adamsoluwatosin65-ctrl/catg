@@ -4,18 +4,6 @@ import json, time, os, random
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="CATG Quiz Pro", layout="centered")
 
-# --- DATABASE FUNCTIONS ---
-def load_accounts():
-    if os.path.exists('accounts.json'):
-        with open('accounts.json', 'r') as f: return json.load(f)
-    return {}
-
-def save_account(username, password):
-    accounts = load_accounts()
-    # Storing only what is necessary for immediate access
-    accounts[username] = {"password": password, "high_score": 0}
-    with open('accounts.json', 'w') as f: json.dump(accounts, f)
-
 # --- PERFORMANCE OPTIMIZED DESIGN ---
 st.markdown("""
     <style>
@@ -62,14 +50,19 @@ st.markdown("""
         position: relative;
         z-index: 1;
     }
-    .stButton>button { width: 100%; border-radius: 20px; height: 3.5em; font-size: 18px; font-weight: 800; background: white; color: #1e5631; border: 2px solid #1e5631; transition: all 0.2s ease; position: relative; z-index: 1; }
+    .stButton>button { 
+        width: 100%; border-radius: 20px; height: 3.5em; 
+        font-size: 18px; font-weight: 800; 
+        background: white; color: #1e5631; border: 2px solid #1e5631; 
+        transition: all 0.2s ease; position: relative; z-index: 1; 
+    }
     .stButton>button:hover { background-color: #1e5631 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- SESSION STATE ---
-if 'page' not in st.session_state: st.session_state.page = 'auth'
-if 'user' not in st.session_state: st.session_state.user = None
+if 'page' not in st.session_state: st.session_state.page = 'welcome'
+if 'user' not in st.session_state: st.session_state.user = "Guest"
 
 # --- TIMER FRAGMENT ---
 @st.fragment(run_every=1)
@@ -95,45 +88,46 @@ def show_balloons():
     st.markdown(html, unsafe_allow_html=True)
 
 # --- APP PAGES ---
-if st.session_state.page == 'auth':
-    st.markdown("<h1 style='text-align: center; color: white;'>CATG QUIZ</h1>", unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["Login", "Sign Up"])
-    with tab1:
-        u = st.text_input("Username", key="l_u")
-        p = st.text_input("Password", type="password", key="l_p")
-        if st.button("Login"):
-            accs = load_accounts()
-            if u in accs and accs[u]['password'] == p:
-                st.session_state.user, st.session_state.page = u, 'mode_selection'
-                st.rerun()
-            else: st.error("Invalid Login")
-    with tab2:
-        nu = st.text_input("Choose Username", key="reg_u")
-        np = st.text_input("Choose Password", type="password", key="reg_p")
-        if st.button("Create Account"):
-            if nu and np:
-                save_account(nu, np)
-                st.success("Account Created! You can now login.")
-            else:
-                st.warning("Please enter a username and password.")
+
+if st.session_state.page == 'welcome':
+    st.markdown("<h1 style='text-align: center; color: white; margin-top: 50px;'>CATG QUIZ PRO</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: white; font-size: 20px;'>Enter your name to start the challenge!</p>", unsafe_allow_html=True)
+    
+    player_name = st.text_input("Player Name", placeholder="Type your name here...")
+    if st.button("GET STARTED"):
+        if player_name:
+            st.session_state.user = player_name
+            st.session_state.page = 'mode_selection'
+            st.rerun()
+        else:
+            st.warning("Please enter a name first!")
 
 elif st.session_state.page == 'mode_selection':
     st.markdown(f"<h1 style='text-align:center; color:white;'>Welcome, {st.session_state.user}!</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
-    if c1.button("👤 Single Player"): st.session_state.page = 'register'; st.rerun()
-    if c2.button("🌐 Online"): st.info("Coming Soon")
-    if c3.button("👥 Friends"): st.info(f"Room: {random.randint(1000, 9999)}")
+    if c1.button("👤 Single Player"): st.session_state.page = 'settings'; st.rerun()
+    if c2.button("🌐 Play Online"): st.info("Searching for global match...")
+    if c3.button("👥 Play with Friends"): 
+        room_id = random.randint(1000, 9999)
+        st.success(f"Room Created! ID: {room_id}")
+        st.info("Share this ID with a friend to compete!")
 
-elif st.session_state.page == 'register':
-    st.markdown("<h2 style='text-align:center; color:white;'>Settings</h2>", unsafe_allow_html=True)
-    limit = st.selectbox("Time Limit (Seconds)", [30, 60, 120])
-    if st.button("START"):
+elif st.session_state.page == 'settings':
+    st.markdown("<h2 style='text-align:center; color:white;'>Quiz Settings</h2>", unsafe_allow_html=True)
+    limit = st.selectbox("Time Limit (Seconds)", [30, 60, 120, 300])
+    if st.button("START QUIZ"):
         if os.path.exists('questions.json'):
             qs = json.load(open('questions.json'))
             idx = list(range(len(qs)))
             random.shuffle(idx)
-            st.session_state.update({'page':'quiz', 'score':0, 'current_step':0, 'start_time':time.time(), 'time_limit':limit, 'questions_data':qs, 'shuffled_indices':idx})
+            st.session_state.update({
+                'page': 'quiz', 'score': 0, 'current_step': 0, 
+                'start_time': time.time(), 'time_limit': limit, 
+                'questions_data': qs, 'shuffled_indices': idx
+            })
             st.rerun()
+        else:
+            st.error("questions.json file not found!")
 
 elif st.session_state.page == 'quiz':
     timer_display()
@@ -151,5 +145,8 @@ elif st.session_state.page == 'quiz':
 
 elif st.session_state.page == 'summary':
     show_balloons()
-    st.markdown(f"<h1 style='text-align:center; color:white; position:relative; z-index:1;'>Score: {st.session_state.score}</h1>", unsafe_allow_html=True)
-    if st.button("Menu"): st.session_state.page = 'mode_selection'; st.rerun()
+    st.markdown(f"<h1 style='text-align:center; color:white; position:relative; z-index:1;'>Great Job, {st.session_state.user}!</h1>", unsafe_allow_html=True)
+    st.markdown(f"<div class='question-box' style='text-align:center;'><h2>Your Final Score: {st.session_state.score}</h2></div>", unsafe_allow_html=True)
+    if st.button("Play Again"): 
+        st.session_state.page = 'mode_selection'
+        st.rerun()
