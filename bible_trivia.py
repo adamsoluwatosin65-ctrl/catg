@@ -41,19 +41,19 @@ st.markdown("""
 if 'mute' not in st.session_state: st.session_state.mute = False
 if 'volume' not in st.session_state: st.session_state.volume = 50
 if 'audio_initialized' not in st.session_state: st.session_state.audio_initialized = False
-if 'last_played' not in st.session_state: st.session_state.last_played = None
 
 def play_sound(file_path, loop=False):
-    """Optimized to prevent lagging by only playing when the source changes"""
+    """Fixed: Re-injects audio player on every rerun while in the quiz/summary"""
     if not st.session_state.mute and st.session_state.audio_initialized and os.path.exists(file_path):
-        # Prevent re-triggering the same audio on every timer tick
-        if st.session_state.last_played != file_path or loop:
-            with open(file_path, "rb") as f:
-                data = f.read()
-                b64 = base64.b64encode(data).decode()
-                vol = st.session_state.volume / 100
-                loop_attr = "loop" if loop else ""
-                md = f"""
+        with open(file_path, "rb") as f:
+            data = f.read()
+            b64 = base64.b64encode(data).decode()
+            vol = st.session_state.volume / 100
+            loop_attr = "loop" if loop else ""
+            # Random key forces the HTML component to refresh and play after st.rerun()
+            unique_key = f"{file_path}_{random.randint(0, 1000)}"
+            md = f"""
+                <div key="{unique_key}">
                     <audio autoplay="true" {loop_attr} id="player">
                     <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
                     </audio>
@@ -61,9 +61,9 @@ def play_sound(file_path, loop=False):
                         var audio = document.getElementById("player");
                         audio.volume = {vol};
                     </script>
-                    """
-                st.components.v1.html(md, height=0)
-                st.session_state.last_played = file_path if not loop else None
+                </div>
+                """
+            st.components.v1.html(md, height=0)
 
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
@@ -174,9 +174,8 @@ elif st.session_state.page == 'next_turn':
             st.rerun()
 
 elif st.session_state.page == 'quiz':
-    # Only triggers once at the start of the quiz to prevent lag
-    if st.session_state.get('current_step') == 0:
-        play_sound("background_music.mp3", loop=True)
+    # Trigger background music on every rerun during the quiz
+    play_sound("background_music.mp3", loop=True)
     
     timer_display()
     if 'questions_data' in st.session_state:
@@ -198,5 +197,4 @@ elif st.session_state.page == 'summary':
         st.markdown(f"<div class='question-box'><h3>{entry['name']}: {entry['score']} pts</h3></div>", unsafe_allow_html=True)
     if st.button("Restart"):
         st.session_state.page = 'welcome'
-        st.session_state.last_played = None
         st.rerun()
