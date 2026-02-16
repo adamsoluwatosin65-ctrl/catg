@@ -7,7 +7,9 @@ st.set_page_config(page_title="CATG Quiz Pro", layout="centered")
 # --- PERFORMANCE OPTIMIZED DESIGN ---
 st.markdown("""
     <style>
-    audio { display: none; }
+    /* Keeps the audio player hidden while allowing it to play */
+    audio { display: none; height: 0; width: 0; }
+    
     .stApp {
         background: linear-gradient(-45deg, #1e5631, #2a7a45, #a8e063);
         background-size: 200% 200%;
@@ -60,6 +62,21 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# --- AUDIO FUNCTION ---
+def play_sound(file_path):
+    """Plays sound using a hidden HTML tag"""
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            data = f.read()
+            import base64
+            b64 = base64.b64encode(data).decode()
+            md = f"""
+                <audio autoplay="true">
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+                </audio>
+                """
+            st.markdown(md, unsafe_allow_html=True)
+
 # --- SESSION STATE ---
 if 'page' not in st.session_state: st.session_state.page = 'welcome'
 if 'leaderboard' not in st.session_state: st.session_state.leaderboard = []
@@ -76,10 +93,7 @@ def timer_display():
         st.markdown(f"<div style='text-align:right; font-weight:900; color:white; font-size:24px;'>⏱️ {remaining}s</div>", unsafe_allow_html=True)
 
 def finish_round():
-    # Save the current player's score to the round leaderboard
     st.session_state.leaderboard.append({"name": st.session_state.current_player_name, "score": st.session_state.score})
-    
-    # Check if there are more players left
     if st.session_state.game_mode == 'multi' and st.session_state.player_index < st.session_state.total_players - 1:
         st.session_state.player_index += 1
         st.session_state.page = 'next_turn'
@@ -127,7 +141,6 @@ elif st.session_state.page == 'mode_selection':
 
 elif st.session_state.page == 'settings':
     st.markdown("<h2 style='text-align:center; color:white;'>Game Settings</h2>", unsafe_allow_html=True)
-    
     if st.session_state.game_mode == 'multi':
         total_p = st.number_input("How many players?", min_value=2, max_value=10, value=2)
         st.session_state.total_players = total_p
@@ -141,7 +154,6 @@ elif st.session_state.page == 'settings':
         st.session_state.total_players = 1
 
     limit = st.selectbox("Time Limit per Player (Seconds)", [30, 60, 120, 300])
-    
     if st.button("START GAME"):
         st.session_state.update({
             'page': 'quiz' if st.session_state.game_mode == 'single' else 'next_turn',
@@ -154,7 +166,6 @@ elif st.session_state.page == 'settings':
 elif st.session_state.page == 'next_turn':
     name = st.session_state.player_names[st.session_state.player_index]
     st.markdown(f"<h1 style='text-align:center; color:white;'>Ready, {name}?</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; color:white;'>Pass the device to the player above.</p>", unsafe_allow_html=True)
     if st.button("START MY TURN"):
         if os.path.exists('questions.json'):
             qs = json.load(open('questions.json'))
@@ -175,7 +186,12 @@ elif st.session_state.page == 'quiz':
     
     for opt in q['options']:
         if st.button(opt, key=f"btn_{st.session_state.current_step}_{opt}"):
-            if opt == q['answer']: st.session_state.score += 1
+            if opt == q['answer']:
+                st.session_state.score += 1
+                play_sound("correct.mp3") # Ensure this file exists
+            else:
+                play_sound("wrong.mp3")   # Ensure this file exists
+            
             st.session_state.current_step += 1
             if st.session_state.current_step >= len(st.session_state.shuffled_indices):
                 finish_round()
@@ -183,19 +199,12 @@ elif st.session_state.page == 'quiz':
 
 elif st.session_state.page == 'summary':
     show_balloons()
+    play_sound("victory.mp3") # Plays when the final leaderboard shows
     st.markdown("<h1 style='text-align:center; color:white;'>🏆 LEADERSHIP BOARD 🏆</h1>", unsafe_allow_html=True)
-    
-    # Sort scores: Highest first
     sorted_scores = sorted(st.session_state.leaderboard, key=lambda x: x['score'], reverse=True)
-    
     for i, entry in enumerate(sorted_scores):
         rank_icon = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "👤"
-        st.markdown(f"""
-            <div class='question-box' style='padding: 20px; margin-bottom: 10px;'>
-                <h3 style='margin:0;'>{rank_icon} {entry['name']}: {entry['score']} Points</h3>
-            </div>
-        """, unsafe_allow_html=True)
-
+        st.markdown(f"<div class='question-box' style='padding: 20px; margin-bottom: 10px;'><h3 style='margin:0;'>{rank_icon} {entry['name']}: {entry['score']} Points</h3></div>", unsafe_allow_html=True)
     if st.button("Back to Main Menu"):
         st.session_state.page = 'welcome'
         st.rerun()
