@@ -74,7 +74,7 @@ with st.sidebar:
         if st.session_state.page in ['quiz', 'next_turn', 'settings', 'mode_selection']:
             st.components.v1.html(get_audio_html("background_music.mp3", loop=True), height=0)
         elif st.session_state.page == 'summary':
-            st.components.v1.html(get_audio_html("winnner_sound,mp3.mp3", loop=False), height=0)
+            st.components.v1.html(get_audio_html("winner_sound.mp3.mp3", loop=False), height=0)
 
     st.markdown("---")
     if st.button("🚪 QUIT GAME"):
@@ -178,3 +178,4 @@ elif st.session_state.page == 'summary':
     if st.button("Restart"):
         st.session_state.page = 'welcome'
         st.rerun()
+
