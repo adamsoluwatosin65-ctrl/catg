@@ -7,7 +7,6 @@ st.set_page_config(page_title="CATG Quiz Pro", layout="centered")
 # --- PERFORMANCE OPTIMIZED DESIGN ---
 st.markdown("""
     <style>
-    .hidden-audio { display: none; height: 0; width: 0; }
     .stApp {
         background: linear-gradient(-45deg, #1e5631, #2a7a45, #a8e063);
         background-size: 200% 200%;
@@ -37,48 +36,52 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- AUDIO LOGIC ---
+# --- SESSION STATE ---
+if 'page' not in st.session_state: st.session_state.page = 'welcome'
+if 'leaderboard' not in st.session_state: st.session_state.leaderboard = []
 if 'mute' not in st.session_state: st.session_state.mute = False
 if 'volume' not in st.session_state: st.session_state.volume = 50
 if 'audio_initialized' not in st.session_state: st.session_state.audio_initialized = False
 
-def play_sound(file_path, loop=False):
-    """Fixed: Re-injects audio player on every rerun while in the quiz/summary"""
-    if not st.session_state.mute and st.session_state.audio_initialized and os.path.exists(file_path):
+# --- AUDIO PERSISTENCE FUNCTION ---
+def get_audio_html(file_path, loop=True):
+    if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             data = f.read()
             b64 = base64.b64encode(data).decode()
             vol = st.session_state.volume / 100
             loop_attr = "loop" if loop else ""
-            # Random key forces the HTML component to refresh and play after st.rerun()
-            unique_key = f"{file_path}_{random.randint(0, 1000)}"
-            md = f"""
-                <div key="{unique_key}">
-                    <audio autoplay="true" {loop_attr} id="player">
-                    <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-                    </audio>
-                    <script>
-                        var audio = document.getElementById("player");
-                        audio.volume = {vol};
-                    </script>
-                </div>
+            return f"""
+                <audio autoplay="true" {loop_attr} style="display:none;">
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+                </audio>
+                <script>
+                    var aud = document.querySelector('audio');
+                    if(aud) aud.volume = {vol};
+                </script>
                 """
-            st.components.v1.html(md, height=0)
+    return ""
 
-# --- SIDEBAR CONTROLS ---
+# --- SIDEBAR & CONTINUOUS AUDIO ---
 with st.sidebar:
     st.header("⚙️ Controls")
     st.session_state.mute = st.checkbox("Mute All Sounds", value=st.session_state.mute)
     st.session_state.volume = st.slider("Volume", 0, 100, st.session_state.volume)
+    
+    # This is the "Engine Room" for audio. 
+    # Because the sidebar stays consistent, we play the music here.
+    if st.session_state.audio_initialized and not st.session_state.mute:
+        if st.session_state.page in ['quiz', 'next_turn', 'settings', 'mode_selection']:
+            st.components.v1.html(get_audio_html("background_music.mp3", loop=True), height=0)
+        elif st.session_state.page == 'summary':
+            st.components.v1.html(get_audio_html("winnner_sound,mp3.mp3", loop=False), height=0)
+
     st.markdown("---")
     if st.button("🚪 QUIT GAME"):
         st.session_state.clear()
         st.rerun()
 
-# --- SESSION STATE ---
-if 'page' not in st.session_state: st.session_state.page = 'welcome'
-if 'leaderboard' not in st.session_state: st.session_state.leaderboard = []
-
+# --- HELPER FUNCTIONS ---
 def finish_round():
     if 'current_player_name' in st.session_state:
         st.session_state.leaderboard.append({"name": st.session_state.current_player_name, "score": st.session_state.score})
@@ -88,7 +91,6 @@ def finish_round():
     else:
         st.session_state.page = 'summary'
 
-# --- TIMER FRAGMENT ---
 @st.fragment(run_every=1)
 def timer_display():
     if st.session_state.page == 'quiz' and 'start_time' in st.session_state:
@@ -99,28 +101,20 @@ def timer_display():
             st.rerun()
         st.markdown(f"<div style='text-align:right; font-weight:900; color:white; font-size:24px;'>⏱️ {remaining}s</div>", unsafe_allow_html=True)
 
-# --- APP PAGES ---
-
+# --- PAGES ---
 if st.session_state.page == 'welcome':
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if os.path.exists('logo.png'):
-            st.image('logo.png', use_container_width=True)
-        else:
-            st.markdown("<h1 style='text-align:center; font-size: 80px;'>🏆</h1>", unsafe_allow_html=True)
+        if os.path.exists('logo.png'): st.image('logo.png', use_container_width=True)
+        else: st.markdown("<h1 style='text-align:center; font-size: 80px;'>🏆</h1>", unsafe_allow_html=True)
             
     st.markdown("<h1 style='text-align: center; color: white;'>WELCOME TO CATG QUIZ</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #f0f0f0; font-size: 18px; font-weight: 600; font-style: italic;'>Win to get to leadership board</p>", unsafe_allow_html=True)
     
-    if not st.session_state.audio_initialized:
-        if st.button("🔊 CLICK TO ENABLE SOUND & START"):
-            st.session_state.audio_initialized = True
-            st.session_state.page = 'mode_selection'
-            st.rerun()
-    else:
-        if st.button("GET STARTED"):
-            st.session_state.page = 'mode_selection'
-            st.rerun()
+    if st.button("🔊 CLICK TO ENABLE SOUND & START"):
+        st.session_state.audio_initialized = True
+        st.session_state.page = 'mode_selection'
+        st.rerun()
 
 elif st.session_state.page == 'mode_selection':
     st.markdown("<h1 style='text-align:center; color:white;'>Choose Game Mode</h1>", unsafe_allow_html=True)
@@ -147,19 +141,11 @@ elif st.session_state.page == 'settings':
 
     limit = st.selectbox("Time (Seconds)", [30, 60, 120])
     if st.button("START"):
-        st.session_state.update({
-            'page': 'quiz' if st.session_state.game_mode == 'single' else 'next_turn', 
-            'player_index': 0, 
-            'time_limit': limit, 
-            'leaderboard': [],
-            'current_player_name': st.session_state.player_names[0]
-        })
-        if st.session_state.game_mode == 'single':
-            if os.path.exists('questions.json'):
-                qs = json.load(open('questions.json'))
-                idx = list(range(len(qs)))
-                random.shuffle(idx)
-                st.session_state.update({'questions_data': qs, 'shuffled_indices': idx, 'score': 0, 'current_step': 0, 'start_time': time.time()})
+        st.session_state.update({'page': 'quiz' if st.session_state.game_mode == 'single' else 'next_turn', 'player_index': 0, 'time_limit': limit, 'leaderboard': [], 'current_player_name': st.session_state.player_names[0]})
+        if st.session_state.game_mode == 'single' and os.path.exists('questions.json'):
+            qs = json.load(open('questions.json'))
+            idx = list(range(len(qs))); random.shuffle(idx)
+            st.session_state.update({'questions_data': qs, 'shuffled_indices': idx, 'score': 0, 'current_step': 0, 'start_time': time.time()})
         st.rerun()
 
 elif st.session_state.page == 'next_turn':
@@ -168,15 +154,11 @@ elif st.session_state.page == 'next_turn':
     if st.button("START MY TURN"):
         if os.path.exists('questions.json'):
             qs = json.load(open('questions.json'))
-            idx = list(range(len(qs)))
-            random.shuffle(idx)
+            idx = list(range(len(qs))); random.shuffle(idx)
             st.session_state.update({'page': 'quiz', 'score': 0, 'current_step': 0, 'start_time': time.time(), 'questions_data': qs, 'shuffled_indices': idx, 'current_player_name': name})
             st.rerun()
 
 elif st.session_state.page == 'quiz':
-    # Trigger background music on every rerun during the quiz
-    play_sound("background_music.mp3", loop=True)
-    
     timer_display()
     if 'questions_data' in st.session_state:
         q = st.session_state.questions_data[st.session_state.shuffled_indices[st.session_state.current_step]]
@@ -185,12 +167,10 @@ elif st.session_state.page == 'quiz':
             if st.button(opt, key=f"btn_{st.session_state.current_step}_{opt}"):
                 if opt == q['answer']: st.session_state.score += 1
                 st.session_state.current_step += 1
-                if st.session_state.current_step >= len(st.session_state.shuffled_indices): 
-                    finish_round()
+                if st.session_state.current_step >= len(st.session_state.shuffled_indices): finish_round()
                 st.rerun()
 
 elif st.session_state.page == 'summary':
-    play_sound("winnner_sound,mp3.mp3")
     st.markdown("<h1 style='text-align:center; color:white;'>🏆 LEADERS 🏆</h1>", unsafe_allow_html=True)
     sorted_scores = sorted(st.session_state.leaderboard, key=lambda x: x['score'], reverse=True)
     for entry in sorted_scores:
