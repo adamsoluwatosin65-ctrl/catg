@@ -4,77 +4,37 @@ import json, time, os, random
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="CATG Quiz Pro", layout="centered")
 
-# --- DATABASE & PERSISTENCE ---
+# --- DATABASE FUNCTIONS ---
 def load_accounts():
     if os.path.exists('accounts.json'):
-        with open('accounts.json', 'r') as f:
-            return json.load(f)
+        with open('accounts.json', 'r') as f: return json.load(f)
     return {}
 
-def save_account(username, password, contact, high_score=0):
+def save_account(username, password, contact):
     accounts = load_accounts()
-    if username in accounts and high_score == 0:
-        high_score = accounts[username].get("high_score", 0)
-    accounts[username] = {"password": password, "contact": contact, "high_score": high_score}
-    with open('accounts.json', 'w') as f:
-        json.dump(accounts, f)
+    accounts[username] = {"password": password, "contact": contact, "high_score": 0}
+    with open('accounts.json', 'w') as f: json.dump(accounts, f)
 
-def update_high_score(username, new_score):
-    accounts = load_accounts()
-    if username in accounts:
-        current_best = accounts[username].get("high_score", 0)
-        if new_score > current_best:
-            accounts[username]["high_score"] = new_score
-            with open('accounts.json', 'w') as f:
-                json.dump(accounts, f)
-            return True
-    return False
-
-def get_global_top_10():
-    accounts = load_accounts()
-    # Create list of (username, score) and sort it
-    score_list = [(u, info.get('high_score', 0)) for u, info in accounts.items()]
-    return sorted(score_list, key=lambda x: x[1], reverse=True)[:10]
-
-# --- PERFORMANCE DESIGN ---
+# --- APP STYLING ---
 st.markdown("""
     <style>
-    audio { display: none; }
-    .stApp {
-        background: linear-gradient(-45deg, #1e5631, #2a7a45, #a8e063);
-        background-size: 200% 200%;
-        animation: activeGradient 15s ease infinite;
-        background-attachment: fixed;
-    }
-    @keyframes activeGradient {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-    .question-box {
-        background: rgba(255, 255, 255, 0.95);
-        padding: 40px; border-radius: 30px; border-left: 12px solid #1e5631;
-        box-shadow: 0 15px 30px rgba(0,0,0,0.1); margin-bottom: 30px; color: #1e5631;
-    }
-    .podium-card { padding: 15px; border-radius: 15px; margin: 8px 0; text-align: center; font-weight: 800; }
-    .gold { background: #FFD700; color: #8B4513; border: 2px solid #DAA520; }
-    .silver { background: #C0C0C0; color: #4F4F4F; border: 2px solid #A9A9A9; }
-    .bronze { background: #CD7F32; color: #FAEBD7; border: 2px solid #8B4513; }
-    .standard { background: white; color: #1e5631; border: 1px solid #ddd; }
-    .stButton>button { width: 100%; border-radius: 20px; height: 3.5em; font-weight: 800; background: white; color: #1e5631; border: 2px solid #1e5631; }
-    .stButton>button:hover { background-color: #1e5631 !important; color: white !important; }
+    .stApp { background: linear-gradient(-45deg, #1e5631, #2a7a45, #a8e063); background-size: 400% 400%; animation: activeGradient 15s ease infinite; }
+    @keyframes activeGradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    .question-box { background: white; padding: 30px; border-radius: 20px; border-left: 10px solid #1e5631; color: #1e5631; margin-bottom: 20px; }
+    .stButton>button { width: 100%; border-radius: 15px; height: 3.5em; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- SESSION STATE ---
 if 'page' not in st.session_state: st.session_state.page = 'auth'
 if 'user' not in st.session_state: st.session_state.user = None
+if 'verify_code' not in st.session_state: st.session_state.verify_code = None
 
-# --- APP PAGES ---
-
+# --- AUTHENTICATION & SMS SIMULATION ---
 if st.session_state.page == 'auth':
-    st.markdown("<h1 style='text-align: center; color: white;'>CATG ACCOUNT</h1>", unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["Login", "Create Account"])
+    st.markdown("<h1 style='text-align: center; color: white;'>CATG QUIZ</h1>", unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["Login", "Sign Up"])
+    
     with tab1:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
@@ -82,65 +42,96 @@ if st.session_state.page == 'auth':
             accs = load_accounts()
             if u in accs and accs[u]['password'] == p:
                 st.session_state.user = u
-                st.session_state.page = 'welcome'
+                st.session_state.page = 'mode_selection'
                 st.rerun()
-            else: st.error("Try again!")
-    with tab2:
-        nu = st.text_input("New Username")
-        nc = st.text_input("Contact")
-        np = st.text_input("New Password", type="password")
-        if st.button("Sign Up"):
-            save_account(nu, np, nc)
-            st.success("Account Created!")
+            else: st.error("Invalid Login")
 
-elif st.session_state.page == 'welcome':
-    st.markdown(f"<h1 style='text-align: center; color: white;'>WELCOME, {st.session_state.user.upper()}!</h1>", unsafe_allow_html=True)
+    with tab2:
+        if 'step' not in st.session_state: st.session_state.step = 1
+        
+        if st.session_state.step == 1:
+            nu = st.text_input("New Username")
+            n_phone = st.text_input("Phone Number")
+            np = st.text_input("New Password", type="password")
+            if st.button("Send Verification Code"):
+                st.session_state.temp_user = (nu, np, n_phone)
+                st.session_state.verify_code = str(random.randint(1000, 9999))
+                st.info(f"📱 SMS SENT! (Simulated Code: {st.session_state.verify_code})")
+                st.session_state.step = 2
+                st.rerun()
+        
+        elif st.session_state.step == 2:
+            code = st.text_input("Enter 4-Digit Code")
+            if st.button("Confirm & Create Account"):
+                if code == st.session_state.verify_code:
+                    save_account(*st.session_state.temp_user)
+                    st.success("Verified! Please Login.")
+                    st.session_state.step = 1
+                    time.sleep(1)
+                    st.rerun()
+                else: st.error("Wrong Code")
+
+# --- MODE SELECTION ---
+elif st.session_state.page == 'mode_selection':
+    st.markdown(f"<h1 style='text-align:center; color:white;'>Welcome, {st.session_state.user}!</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:white;'>Select Your Game Mode</p>", unsafe_allow_html=True)
     
-    # Global Leaderboard Preview on Front Page
-    st.markdown("<div style='background:rgba(255,255,255,0.1); padding:20px; border-radius:20px;'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center; color:white;'>🏆 GLOBAL TOP 3</h3>", unsafe_allow_html=True)
-    top_3 = get_global_top_10()[:3]
-    for i, (name, score) in enumerate(top_3):
-        style = "gold" if i == 0 else "silver" if i == 1 else "bronze"
-        st.markdown(f"<div class='podium-card {style}' style='font-size:16px;'>{i+1}. {name} — {score} PTS</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    if st.button("START NEW QUIZ"): 
+    col1, col2, col3 = st.columns(3)
+    if col1.button("👤 Single Player"):
+        st.session_state.mode = 'Single'
         st.session_state.page = 'register'
         st.rerun()
+    if col2.button("🌐 Play Online"):
+        st.warning("Searching for global match...")
+    if col3.button("👥 Play with Friends"):
+        st.session_state.room = str(random.randint(100, 999))
+        st.info(f"Share this Link: `https://catg-quiz.streamlit.app/?room={st.session_state.room}`")
 
 elif st.session_state.page == 'register':
-    # This page now just handles the time limit and starts the game
-    st.markdown("<h2 style='text-align: center; color: white;'>Game Setup</h2>", unsafe_allow_html=True)
     limit = st.selectbox("Time Limit", [30, 60, 120])
-    if st.button("GO!"):
+    if st.button("START QUIZ"):
         all_qs = json.load(open('questions.json')) if os.path.exists('questions.json') else []
         indices = list(range(len(all_qs))); random.shuffle(indices)
-        st.session_state.update({'page': 'quiz', 'p_name': st.session_state.user, 'time_limit': limit, 'start_time': time.time(), 'score': 0, 'shuffled_indices': indices, 'current_step': 0, 'questions_data': all_qs})
+        st.session_state.update({
+            'page': 'quiz', 'score': 0, 'current_step': 0,
+            'start_time': time.time(), 'time_limit': limit,
+            'questions_data': all_qs, 'shuffled_indices': indices
+        })
         st.rerun()
 
+# --- THE QUIZ (FIXED) ---
 elif st.session_state.page == 'quiz':
-    # Simple logic to update high score at the end of the quiz
-    # (Rest of quiz logic remains same...)
     elapsed = time.time() - st.session_state.start_time
-    if elapsed >= st.session_state.time_limit:
-        update_high_score(st.session_state.user, st.session_state.score)
-        st.session_state.page = 'final'
-        st.rerun()
-    # Display quiz...
-    st.write(f"Score: {st.session_state.score}")
-    if st.button("Finish Early"):
-        update_high_score(st.session_state.user, st.session_state.score)
-        st.session_state.page = 'final'
+    remaining = int(st.session_state.time_limit - elapsed)
+    
+    if remaining <= 0 or st.session_state.current_step >= len(st.session_state.shuffled_indices):
+        st.session_state.page = 'summary'
         st.rerun()
 
-elif st.session_state.page == 'final':
-    st.markdown("<h1 style='text-align: center; color: white;'>GLOBAL RANKINGS</h1>", unsafe_allow_html=True)
-    top_10 = get_global_top_10()
-    for i, (name, score) in enumerate(top_10):
-        style = "gold" if i == 0 else "silver" if i == 1 else "bronze" if i == 2 else "standard"
-        st.markdown(f"<div class='podium-card {style}'>{i+1}. {name.upper()} — {score} PTS</div>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align:right; color:white;'>⏱️ {remaining}s</h3>", unsafe_allow_html=True)
     
-    if st.button("HOME"): 
-        st.session_state.page = 'welcome'
+    # LOAD QUESTION
+    q_idx = st.session_state.shuffled_indices[st.session_state.current_step]
+    q = st.session_state.questions_data[q_idx]
+
+    st.markdown(f"<div class='question-box'><h2>{q['question']}</h2></div>", unsafe_allow_html=True)
+
+    # DISPLAY OPTIONS AS BUTTONS
+    for opt in q['options']:
+        if st.button(opt, key=f"btn_{st.session_state.current_step}_{opt}"):
+            if opt == q['answer']:
+                st.session_state.score += 1
+            st.session_state.current_step += 1
+            st.rerun()
+
+    if st.button("Finish Early", type="secondary"):
+        st.session_state.page = 'summary'
+        st.rerun()
+
+elif st.session_state.page == 'summary':
+    st.balloons()
+    st.markdown(f"<h1 style='text-align:center; color:white;'>Finished!</h1>", unsafe_allow_html=True)
+    st.markdown(f"<div class='question-box' style='text-align:center;'><h2>Score: {st.session_state.score}</h2></div>", unsafe_allow_html=True)
+    if st.button("Back to Menu"):
+        st.session_state.page = 'mode_selection'
         st.rerun()
