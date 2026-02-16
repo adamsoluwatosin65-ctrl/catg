@@ -10,9 +10,10 @@ def load_accounts():
         with open('accounts.json', 'r') as f: return json.load(f)
     return {}
 
-def save_account(username, password, contact):
+def save_account(username, password):
     accounts = load_accounts()
-    accounts[username] = {"password": password, "contact": contact, "high_score": 0}
+    # Storing only what is necessary for immediate access
+    accounts[username] = {"password": password, "high_score": 0}
     with open('accounts.json', 'w') as f: json.dump(accounts, f)
 
 # --- PERFORMANCE OPTIMIZED DESIGN ---
@@ -31,7 +32,6 @@ st.markdown("""
         100% { background-position: 0% 50%; }
     }
     
-    /* GPU-ACCELERATED FLOATING BALLOONS */
     .floating-container {
         position: fixed;
         top: 0; left: 0; width: 100%; height: 100%;
@@ -70,7 +70,6 @@ st.markdown("""
 # --- SESSION STATE ---
 if 'page' not in st.session_state: st.session_state.page = 'auth'
 if 'user' not in st.session_state: st.session_state.user = None
-if 'leaderboard' not in st.session_state: st.session_state.leaderboard = []
 
 # --- TIMER FRAGMENT ---
 @st.fragment(run_every=1)
@@ -83,11 +82,11 @@ def timer_display():
             st.rerun()
         st.markdown(f"<div style='text-align:right; font-weight:900; color:white; font-size:24px;'>⏱️ {remaining}s</div>", unsafe_allow_html=True)
 
-# --- FLOATING EFFECT GENERATOR ---
+# --- FLOATING EFFECT ---
 def show_balloons():
     icons = ["🎈", "🎊", "✨", "⭐", "🎉"]
     html = '<div class="floating-container">'
-    for i in range(15): # Reduced count for smoothness
+    for i in range(15):
         left = random.randint(0, 95)
         delay = random.uniform(0, 5)
         icon = random.choice(icons)
@@ -109,11 +108,14 @@ if st.session_state.page == 'auth':
                 st.rerun()
             else: st.error("Invalid Login")
     with tab2:
-        nu, nc, np = st.text_input("New User"), st.text_input("Phone"), st.text_input("New Pass", type="password")
+        nu = st.text_input("Choose Username", key="reg_u")
+        np = st.text_input("Choose Password", type="password", key="reg_p")
         if st.button("Create Account"):
             if nu and np:
-                save_account(nu, np, nc)
-                st.success("Account Created! Please Login.")
+                save_account(nu, np)
+                st.success("Account Created! You can now login.")
+            else:
+                st.warning("Please enter a username and password.")
 
 elif st.session_state.page == 'mode_selection':
     st.markdown(f"<h1 style='text-align:center; color:white;'>Welcome, {st.session_state.user}!</h1>", unsafe_allow_html=True)
@@ -130,7 +132,7 @@ elif st.session_state.page == 'register':
             qs = json.load(open('questions.json'))
             idx = list(range(len(qs)))
             random.shuffle(idx)
-            st.session_state.update({'page':'quiz', 'score':0, 'current_step':0, 'start_time':time.time(), 'time_limit':limit, 'questions_data':qs, 'shuffled_indices':idx, 'wrong_answers':[]})
+            st.session_state.update({'page':'quiz', 'score':0, 'current_step':0, 'start_time':time.time(), 'time_limit':limit, 'questions_data':qs, 'shuffled_indices':idx})
             st.rerun()
 
 elif st.session_state.page == 'quiz':
@@ -140,9 +142,7 @@ elif st.session_state.page == 'quiz':
     
     for opt in q['options']:
         if st.button(opt, key=f"btn_{st.session_state.current_step}_{opt}"):
-            if opt != q['answer']:
-                st.session_state.wrong_answers.append({'question': q['question'], 'correct': q['answer'], 'yours': opt})
-            else:
+            if opt == q['answer']:
                 st.session_state.score += 1
             st.session_state.current_step += 1
             if st.session_state.current_step >= len(st.session_state.shuffled_indices):
@@ -150,6 +150,6 @@ elif st.session_state.page == 'quiz':
             st.rerun()
 
 elif st.session_state.page == 'summary':
-    show_balloons() # Smooth floating effect
+    show_balloons()
     st.markdown(f"<h1 style='text-align:center; color:white; position:relative; z-index:1;'>Score: {st.session_state.score}</h1>", unsafe_allow_html=True)
     if st.button("Menu"): st.session_state.page = 'mode_selection'; st.rerun()
