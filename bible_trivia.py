@@ -4,122 +4,187 @@ import json, time, os, random
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="CATG Quiz Pro", layout="centered")
 
-# --- DATABASE FUNCTIONS ---
-def load_accounts():
-    if os.path.exists('accounts.json'):
-        with open('accounts.json', 'r') as f: return json.load(f)
-    return {}
-
-def save_account(username, password, contact):
-    accounts = load_accounts()
-    accounts[username] = {"password": password, "contact": contact, "high_score": 0}
-    with open('accounts.json', 'w') as f: json.dump(accounts, f)
-
-# --- STYLING ---
+# --- PERFORMANCE OPTIMIZED DESIGN ---
 st.markdown("""
     <style>
-    .stApp { background: linear-gradient(-45deg, #1e5631, #2a7a45, #a8e063); background-size: 400% 400%; animation: activeGradient 15s ease infinite; }
-    @keyframes activeGradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-    .question-box { background: white; padding: 30px; border-radius: 20px; border-left: 10px solid #1e5631; color: #1e5631; margin-bottom: 20px; }
-    .stButton>button { width: 100%; border-radius: 15px; height: 3.5em; font-weight: bold; }
+    audio { display: none; }
+
+    .stApp {
+        background: linear-gradient(-45deg, #1e5631, #2a7a45, #a8e063);
+        background-size: 200% 200%;
+        animation: activeGradient 15s ease infinite;
+        background-attachment: fixed;
+    }
+
+    @keyframes activeGradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* REMOVED backdrop-filter blur for performance on mobile */
+    .question-box {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 40px;
+        border-radius: 30px;
+        border-left: 12px solid #1e5631;
+        box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+        color: #1e5631;
+    }
+
+    .podium-card {
+        padding: 20px; border-radius: 15px; margin: 10px 0;
+        text-align: center; font-weight: 900; font-size: 22px;
+    }
+    .gold { background: #FFD700; color: #8B4513; border: 3px solid #DAA520; }
+    .silver { background: #C0C0C0; color: #4F4F4F; border: 3px solid #A9A9A9; }
+    .bronze { background: #CD7F32; color: #FAEBD7; border: 3px solid #8B4513; }
+    .standard { background: white; color: #1e5631; border: 1px solid #ddd; }
+
+    .stButton>button { 
+        width: 100%; border-radius: 20px; height: 4.5em; 
+        font-size: 18px; font-weight: 800; 
+        background: white; color: #1e5631; border: 2px solid #1e5631; 
+        transition: all 0.2s ease;
+    }
+    .stButton>button:hover { background-color: #1e5631 !important; color: white !important; }
+
+    .balloon { position: fixed; will-change: transform; font-size: 50px; animation: spreadFloat 10s linear infinite; z-index: 99999; pointer-events: none; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- SESSION STATE ---
-if 'page' not in st.session_state: st.session_state.page = 'auth'
-if 'user' not in st.session_state: st.session_state.user = None
+if 'page' not in st.session_state: st.session_state.page = 'welcome'
+if 'leaderboard' not in st.session_state: st.session_state.leaderboard = []
+if 'muted' not in st.session_state: st.session_state.muted = False
+if 'volume' not in st.session_state: st.session_state.volume = 50
 
-# --- AUTHENTICATION (NO CODE REQUIRED) ---
-if st.session_state.page == 'auth':
-    st.markdown("<h1 style='text-align: center; color: white;'>CATG QUIZ</h1>", unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["Login", "Sign Up"])
-    
-    with tab1:
-        u = st.text_input("Username", key="login_u")
-        p = st.text_input("Password", type="password", key="login_p")
-        if st.button("Login"):
-            accs = load_accounts()
-            if u in accs and accs[u]['password'] == p:
-                st.session_state.user = u
-                st.session_state.page = 'mode_selection'
-                st.rerun()
-            else: st.error("Invalid Username or Password")
+# --- SIDEBAR CONTROLS (Sound) ---
+with st.sidebar:
+    st.title("Settings")
+    st.session_state.muted = st.checkbox("Mute Sound", value=st.session_state.muted)
+    st.session_state.volume = st.slider("Volume", 0, 100, st.session_state.volume)
 
-    with tab2:
-        nu = st.text_input("Choose Username", key="reg_u")
-        n_phone = st.text_input("Phone Number", key="reg_phone")
-        np = st.text_input("Choose Password", type="password", key="reg_p")
-        if st.button("Create Account"):
-            if nu and np:
-                save_account(nu, np, n_phone)
-                st.success("Account created successfully! You can now login.")
-            else:
-                st.warning("Please fill in a Username and Password")
+def play_audio(file_path, loop=True):
+    if not st.session_state.muted and os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            # Note: Standard st.audio doesn't support volume control directly via Python, 
+            # but muting works perfectly here.
+            st.audio(f.read(), format="audio/mp3", loop=loop, autoplay=True)
 
-# --- MODE SELECTION ---
-elif st.session_state.page == 'mode_selection':
-    st.markdown(f"<h1 style='text-align:center; color:white;'>Welcome, {st.session_state.user}!</h1>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("👤 Single Player"):
-            st.session_state.page = 'register'
+@st.fragment(run_every=1)
+def high_speed_timer():
+    if st.session_state.page == 'quiz' and 'start_time' in st.session_state:
+        elapsed = time.time() - st.session_state.start_time
+        remaining = int(st.session_state.time_limit - elapsed)
+        if remaining <= 0:
+            if (st.session_state.p_name, st.session_state.score) not in st.session_state.leaderboard:
+                st.session_state.leaderboard.append((st.session_state.p_name, st.session_state.score))
+            st.session_state.page = 'summary'
             st.rerun()
-    with col2:
-        if st.button("🌐 Online Match"):
-            st.info("Searching for global match...")
-    with col3:
-        if st.button("👥 Play Friends"):
-            room_id = random.randint(1000, 9999)
-            st.success(f"Room Created! ID: {room_id}")
-            st.info("Send this room ID to your friend to compete!")
+        st.markdown(f"<div style='text-align:right; font-weight:900; color:white; font-size:24px; text-shadow: 1px 1px 5px black;'>⏱️ {remaining}s</div>", unsafe_allow_html=True)
 
-# --- GAME SETUP ---
+# --- APP PAGES ---
+
+if st.session_state.page == 'welcome':
+    # Added Logo centered
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if os.path.exists('logo.png'):
+            st.image('logo.png', use_container_width=True)
+        else:
+            st.markdown("<h1 style='text-align:center;'>🖼️</h1>", unsafe_allow_html=True) # Placeholder
+    
+    st.markdown("<h1 style='text-align: center; color: white;'>WELCOME TO CATG QUIZ</h1>", unsafe_allow_html=True)
+    # Added Subtitle
+    st.markdown("<p style='text-align: center; color: white; font-size: 20px; opacity: 0.9;'>Win to get to leadership board</p>", unsafe_allow_html=True)
+    
+    if st.button("GET STARTED"): 
+        st.session_state.page = 'register'
+        st.rerun()
+
 elif st.session_state.page == 'register':
-    st.markdown("<h2 style='text-align:center; color:white;'>Game Settings</h2>", unsafe_allow_html=True)
-    limit = st.selectbox("Time Limit (Seconds)", [30, 60, 120])
-    if st.button("START QUIZ"):
-        if os.path.exists('questions.json'):
-            all_qs = json.load(open('questions.json'))
-            indices = list(range(len(all_qs)))
-            random.shuffle(indices)
+    st.markdown("<h2 style='text-align: center; color: white;'>Player Entry</h2>", unsafe_allow_html=True)
+    name = st.text_input("Player Name")
+    limit = st.selectbox("Time Limit (Seconds)", [30, 60, 120, 300], index=1)
+    col1, col2 = st.columns(2)
+    if col1.button("START QUIZ"):
+        if name:
+            all_qs = json.load(open('questions.json')) if os.path.exists('questions.json') else []
+            shuffled_indices = list(range(len(all_qs)))
+            random.shuffle(shuffled_indices)
             st.session_state.update({
-                'page': 'quiz', 'score': 0, 'current_step': 0,
-                'start_time': time.time(), 'time_limit': limit,
-                'questions_data': all_qs, 'shuffled_indices': indices
+                'page': 'quiz', 'p_name': name, 'time_limit': limit, 
+                'start_time': time.time(), 'score': 0, 
+                'shuffled_indices': shuffled_indices, 'current_step': 0, 
+                'wrong_answers': [], 'questions_data': all_qs
             })
             st.rerun()
-        else:
-            st.error("Missing 'questions.json' file!")
+    if col2.button("QUIT"): 
+        st.session_state.clear()
+        st.session_state.page = 'welcome'
+        st.rerun()
 
-# --- THE QUIZ ---
 elif st.session_state.page == 'quiz':
-    elapsed = time.time() - st.session_state.start_time
-    remaining = int(st.session_state.time_limit - elapsed)
+    play_audio("background_music.mp3")
+    high_speed_timer()
     
-    if remaining <= 0 or st.session_state.current_step >= len(st.session_state.shuffled_indices):
+    if 'questions_data' in st.session_state and st.session_state.current_step < len(st.session_state.shuffled_indices):
+        step = st.session_state.current_step
+        q_idx = st.session_state.shuffled_indices[step]
+        q = st.session_state.questions_data[q_idx]
+        
+        with st.container():
+            st.markdown(f"""<div class="question-box">
+                <p style="opacity:0.6; font-size:14px; margin:0;">QUESTION {step+1} OF {len(st.session_state.shuffled_indices)}</p>
+                <h2 style="margin-top:10px;">{q['question']}</h2>
+            </div>""", unsafe_allow_html=True)
+            
+            for opt in q['options']:
+                if st.button(opt, key=f"q{step}_{opt}"):
+                    if opt == q['answer']: 
+                        st.session_state.score += 1
+                    else: 
+                        st.session_state.wrong_answers.append({'question': q['question'], 'correct': q['answer'], 'yours': opt})
+                    st.session_state.current_step += 1
+                    st.rerun()
+    else:
+        if (st.session_state.p_name, st.session_state.score) not in st.session_state.leaderboard:
+            st.session_state.leaderboard.append((st.session_state.p_name, st.session_state.score))
         st.session_state.page = 'summary'
         st.rerun()
 
-    st.markdown(f"<h2 style='text-align:right; color:white;'>⏱️ {remaining}s</h2>", unsafe_allow_html=True)
-    
-    q_idx = st.session_state.shuffled_indices[st.session_state.current_step]
-    q = st.session_state.questions_data[q_idx]
-
-    st.markdown(f"<div class='question-box'><h3>{q['question']}</h3></div>", unsafe_allow_html=True)
-
-    # DISPLAY THE ANSWERS
-    for opt in q['options']:
-        if st.button(opt, key=f"q_{st.session_state.current_step}_{opt}"):
-            if opt == q['answer']:
-                st.session_state.score += 1
-            st.session_state.current_step += 1
-            st.rerun()
-
-# --- SUMMARY ---
 elif st.session_state.page == 'summary':
-    st.balloons()
-    st.markdown(f"<div class='question-box' style='text-align:center;'><h1>Final Score: {st.session_state.score}</h1></div>", unsafe_allow_html=True)
-    if st.button("Back to Menu"):
-        st.session_state.page = 'mode_selection'
-        st.rerun()
+    st.markdown(f"<h1 style='text-align: center; color: white;'>Round Over, {st.session_state.p_name}!</h1>", unsafe_allow_html=True)
+    st.markdown(f"<div class='question-box' style='text-align:center;'><h2>Final Score: {st.session_state.score}</h2></div>", unsafe_allow_html=True)
+    
+    if st.session_state.wrong_answers:
+        with st.expander("🔍 Review Mistakes"):
+            for item in st.session_state.wrong_answers:
+                st.markdown(f"<div style='background:white; color:black; padding:10px; border-radius:10px; margin-bottom:5px;'><b>Q: {item['question']}</b><br><span style='color:red;'>Your: {item['yours']}</span> | <span style='color:green;'>Correct: {item['correct']}</span></div>", unsafe_allow_html=True)
+    
+    cA, cB, cC = st.columns(3)
+    if cA.button("NEXT PLAYER"): st.session_state.page = 'register'; st.rerun()
+    if cB.button("LEADERBOARD"): st.session_state.page = 'final'; st.rerun()
+    if cC.button("QUIT"): st.session_state.clear(); st.session_state.page = 'welcome'; st.rerun()
+
+elif st.session_state.page == 'final':
+    play_audio("winner_sound.mp3", loop=False)
+    
+    # Balloons
+    balloon_list = ["🎈", "🎊", "✨", "⭐"]
+    balloons_html = "".join([f'<div class="balloon" style="left:{random.randint(0,95)}%; bottom:{random.randint(-20, 50)}vh; animation-delay:{random.uniform(0,8)}s;">{random.choice(balloon_list)}</div>' for _ in range(25)])
+    st.markdown(balloons_html, unsafe_allow_html=True)
+    
+    st.markdown("<h1 style='text-align: center; color: white;'>🏆 LEADERSHIP BOARD 🏆</h1>", unsafe_allow_html=True)
+    
+    scores = sorted(st.session_state.leaderboard, key=lambda x: x[1], reverse=True)
+    for i, (n, s) in enumerate(scores):
+        style = "gold" if i == 0 else "silver" if i == 1 else "bronze" if i == 2 else "standard"
+        st.markdown(f"<div class='podium-card {style}'>{i+1}. {n.upper()} — {s} PTS</div>", unsafe_allow_html=True)
+        
+    c1, c2, c3 = st.columns(3)
+    if c1.button("NEXT PLAYER"): st.session_state.page = 'register'; st.rerun()
+    if c2.button("RESET ALL"): st.session_state.clear(); st.rerun()
+    if c3.button("QUIT"): st.session_state.clear(); st.session_state.page = 'welcome'; st.rerun()
